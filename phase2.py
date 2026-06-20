@@ -643,3 +643,19 @@ hotspot = hotspot.merge(cdata, on="cluster", how="left")
 hotspot.to_csv("hotspot_report.csv", index=False)
 print(f"✅ hotspot_report.csv updated — {len(hotspot)} rows")
 print(hotspot[["cluster", "display_name"]].head(10).to_string(index=False))
+
+
+# Export a slim version for the dashboard (drops the 27 binary violation columns)
+SLIM_COLS = [
+    "id", "latitude", "longitude",
+    "vehicle_type", "violation_list",
+    "junction_name", "police_station",
+    "created_datetime", "hour",
+    "day_of_week", "day_name",
+    "is_weekend", "is_peak_hour",
+    "month", "week",
+    "priority_score", "is_resolved", "cluster",
+]
+slim = df[[c for c in SLIM_COLS if c in df.columns]]
+slim.to_csv("df_engineered_slim.csv", index=False)
+print(f"Slim CSV: {slim.shape} — size check: run ls -lh df_engineered_slim.csv")

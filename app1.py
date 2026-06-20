@@ -10,8 +10,8 @@ import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 import seaborn as sns
-import pydeck as pdk
-
+import folium
+import os
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
@@ -37,7 +37,7 @@ DAY_NAMES = {0:"Mon", 1:"Tue", 2:"Wed", 3:"Thu", 4:"Fri", 5:"Sat", 6:"Sun"}
 
 @st.cache_data
 def load_engineered():
-    df = pd.read_csv("df_engineered.csv")
+    df = pd.read_csv("df_engineered_slim.csv")
     df["created_datetime"] = pd.to_datetime(df["created_datetime"], utc=True, errors="coerce")
     df["date"] = pd.to_datetime(df["created_datetime"]).dt.normalize()
     return df
@@ -227,7 +227,7 @@ with tab2:
         st.warning("No clusters match selected filters.")
     else:
         from streamlit_folium import st_folium
-        import folium
+       
         from folium.plugins import HeatMap
 
         # Merge recommended_action + display cols from hotspot_df
@@ -683,7 +683,7 @@ with tab6:
 
             with col_map:
                 from streamlit_folium import st_folium
-                import folium
+               
 
                 # Color by alert level
                 ALERT_COLORS = {
@@ -819,7 +819,7 @@ with tab6:
 
         with col_wl:
             # Use saved image if available, else build on the fly
-            import os
+            
             if os.path.exists("weekly_forecast_heatmap.png"):
                 st.image(
                     "weekly_forecast_heatmap.png",

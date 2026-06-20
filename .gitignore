@@ -1,0 +1,28 @@
+__pycache__/
+*.pyc
+
+/.streamlit
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Logs, caches, coverage
+*.log
+.pytest_cache/
+.coverage
+coverage.xml
+nosetests.xml
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+
+# Secrets / credentials
+secrets.json
+credentials.json
+config.json
+*.key
+*.pem
+
+./trafficdata.csv
+./df_engineered.csv
