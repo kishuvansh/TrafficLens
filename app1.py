@@ -57,7 +57,36 @@ def load_temporal():
 @st.cache_data
 def load_anomalies():
     return pd.read_csv("anomaly_log.csv")
+# ── App Header Info ───────────────────────────────────────────────
+st.markdown("""
+## 🚦 TrafficLens — AI-Driven Parking Congestion Intelligence
+""")
+st.info("""
+**What is this?**  
+TrafficLens analyses 5 months of real Bengaluru Traffic Police violation data (298,450 records) 
+to identify illegal parking hotspots, detect anomalous spikes, and predict where violations 
+will peak — helping enforcement move from reactive patrol to predictive deployment.
+""")
 
+# ─────────────────────────────────────────────
+# TABS
+# ─────────────────────────────────────────────
+
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "📊 Overview",
+    "🗺️ Hotspot Map",
+    "⏰ Temporal Patterns",
+    "🚨 Anomaly Alerts",
+    "🔍 Data Explorer",
+    "🔮 Predictive Dispatch",   # ← add this
+])
+
+
+
+
+
+
+st.divider()
 # ─────────────────────────────────────────────
 # LOAD ALL DATA
 # ─────────────────────────────────────────────
@@ -82,6 +111,19 @@ except FileNotFoundError as e:
 
 with st.sidebar:
     st.title("🚦 Filters")
+    st.markdown("---")
+ # ── How to Explore ───────────────────────────────────────────
+    with st.expander("📖 How to Explore", expanded=False):
+        st.markdown("""
+**Start here →**
+- 📊 **Overview** — Get the big picture on violations, vehicles, and stations
+- 🗺️ **Hotspot Map** — See 869 risk-scored zones on live Bengaluru roads. Click any marker for patrol instructions
+- ⏰ **Temporal Patterns** — Discover peak violation hours and days per zone
+- 🚨 **Anomaly Alerts** — Zones with unusual spike activity flagged automatically
+- 🔍 **Data Explorer** — Filter and download the raw 298K violation records
+- 🔮 **Predictive Dispatch** — Pick a date, get a ranked patrol deployment plan
+        """)
+
     st.markdown("---")
 
     # Risk tier filter
@@ -148,18 +190,6 @@ if sel_stations:
 hotspot_filtered = hotspot_df[hotspot_df["risk_tier"].isin(sel_tiers)]
 cluster_filtered = cluster_df[cluster_df["risk_tier"].isin(sel_tiers)]
 
-# ─────────────────────────────────────────────
-# TABS
-# ─────────────────────────────────────────────
-
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "📊 Overview",
-    "🗺️ Hotspot Map",
-    "⏰ Temporal Patterns",
-    "🚨 Anomaly Alerts",
-    "🔍 Data Explorer",
-    "🔮 Predictive Dispatch",   # ← add this
-])
 
 # ══════════════════════════════════════════════
 # TAB 1 — OVERVIEW
@@ -219,125 +249,126 @@ with tab1:
 # TAB 2 — HOTSPOT MAP
 # ══════════════════════════════════════════════
 
+with st.spinner("Loading enforcement map..."):
+    with tab2:
+        st.header("Enforcement Hotspot Map")
 
-with tab2:
-    st.header("Enforcement Hotspot Map")
+        if cluster_filtered.empty:
+            st.warning("No clusters match selected filters.")
+        else:
+            from streamlit_folium import st_folium
+        
+            from folium.plugins import HeatMap
 
-    if cluster_filtered.empty:
-        st.warning("No clusters match selected filters.")
-    else:
-        from streamlit_folium import st_folium
-       
-        from folium.plugins import HeatMap
+            # Merge recommended_action + display cols from hotspot_df
+            cluster_map = cluster_filtered.merge(
+                hotspot_df[[
+                    "cluster", "rank", "recommended_action",
+                    "peak_day_name", "top_vehicle", "peak_hour"
+                ]],
+                on="cluster",
+                how="left",
+                suffixes=("", "_hs"),
+            )
+            cluster_map["recommended_action"] = cluster_map["recommended_action"].fillna("No action assigned")
+            cluster_map["rank"] = cluster_map["rank"].fillna(0).astype(int)
 
-        # Merge recommended_action + display cols from hotspot_df
-        cluster_map = cluster_filtered.merge(
-            hotspot_df[[
-                "cluster", "rank", "recommended_action",
-                "peak_day_name", "top_vehicle", "peak_hour"
-            ]],
-            on="cluster",
-            how="left",
-            suffixes=("", "_hs"),
-        )
-        cluster_map["recommended_action"] = cluster_map["recommended_action"].fillna("No action assigned")
-        cluster_map["rank"] = cluster_map["rank"].fillna(0).astype(int)
+            # ── Build map ─────────────────────────────────────────
+            center_lat = cluster_map["center_lat"].mean()
+            center_lon = cluster_map["center_lon"].mean()
 
-        # ── Build map ─────────────────────────────────────────
-        center_lat = cluster_map["center_lat"].mean()
-        center_lon = cluster_map["center_lon"].mean()
+            m = folium.Map(
+                location=[center_lat, center_lon],
+                zoom_start=13,
+                tiles="OpenStreetMap",
+            )
 
-        m = folium.Map(
-            location=[center_lat, center_lon],
-            zoom_start=13,
-            tiles="OpenStreetMap",
-        )
-
-        # Layer 1 — Heatmap (sampled for performance)
-        heat_src = df_filtered[["latitude", "longitude", "priority_score"]].dropna().copy()
-        heat_src["priority_score"] = pd.to_numeric(
-            heat_src["priority_score"], errors="coerce"
-        ).fillna(0)
-        max_p = heat_src["priority_score"].max()
-        heat_src["w"] = heat_src["priority_score"] / max_p if max_p > 0 else 1
-        heat_sample = heat_src.sample(min(30000, len(heat_src)), random_state=42)
-        HeatMap(
-            heat_sample[["latitude", "longitude", "w"]].values.tolist(),
-            radius=10,
-            blur=15,
-            min_opacity=0.25,
-            max_zoom=18,
-            name="Violation Heatmap",
-        ).add_to(m)
-
-        # Layer 2 — Cluster markers
-        # FIXED: use correct string keys matching risk_tier values exactly
-        FOLIUM_COLORS = {
-            "🔴 CRITICAL": "red",
-            "🟠 HIGH":     "orange",
-            "🟡 MEDIUM":   "cadetblue",
-            "🟢 LOW":      "green",
-        }
-
-        for _, row in cluster_map.iterrows():
-            tier   = str(row.get("risk_tier", "🟢 LOW")).strip()
-            color  = FOLIUM_COLORS.get(tier, "blue")
-
-            # FIXED: radius 5–18 pixels (was 60–160 — way too large)
-            radius = int(5 + (float(row["risk_score"]) / 10.0) * 13)
-
-            popup_html = f"""
-            <div style='font-family:sans-serif; width:240px; font-size:13px;
-                        color:#111111; background:#ffffff; padding:6px'>
-                <b style='font-size:14px'>Rank #{int(row['rank'])} — {tier}</b>
-                <hr style='margin:4px 0; border-color:#cccccc'>
-                <b>Junction:</b> {row['display_name']}<br>
-                <b>Risk Score:</b> {float(row['risk_score']):.1f} / 10<br>
-                <b>Violations:</b> {int(row['violation_count']):,}<br>
-                <b>Peak Hour:</b> {int(row['peak_hour'])}:00<br>
-                <b>Peak Day:</b> {row['peak_day_name']}<br>
-                <b>Top Vehicle:</b> {row['top_vehicle']}<br>
-                <hr style='margin:4px 0; border-color:#cccccc'>
-                <b>Action:</b><br>
-                <span style='color:#333333'>{row['recommended_action']}</span>
-            </div>
-            """
-
-            folium.CircleMarker(
-                location=[row["center_lat"], row["center_lon"]],
-                radius=radius,
-                color=color,
-                fill=True,
-                fill_color=color,
-                fill_opacity=0.75,
-                weight=2,
-                popup=folium.Popup(popup_html, max_width=260),
-                tooltip=(
-                    f"#{int(row['rank'])} {tier} | "
-                    f"Score: {float(row['risk_score']):.1f} | "
-                    f"{row['display_name']}"
-                ),
+            # Layer 1 — Heatmap (sampled for performance)
+            heat_src = df_filtered[["latitude", "longitude", "priority_score"]].dropna().copy()
+            heat_src["priority_score"] = pd.to_numeric(
+                heat_src["priority_score"], errors="coerce"
+            ).fillna(0)
+            max_p = heat_src["priority_score"].max()
+            heat_src["w"] = heat_src["priority_score"] / max_p if max_p > 0 else 1
+            heat_sample = heat_src.sample(min(30000, len(heat_src)), random_state=42)
+            HeatMap(
+                heat_sample[["latitude", "longitude", "w"]].values.tolist(),
+                radius=10,
+                blur=15,
+                min_opacity=0.25,
+                max_zoom=18,
+                name="Violation Heatmap",
             ).add_to(m)
 
-        folium.LayerControl().add_to(m)
+            # Layer 2 — Cluster markers
+            # FIXED: use correct string keys matching risk_tier values exactly
+            FOLIUM_COLORS = {
+                "🔴 CRITICAL": "red",
+                "🟠 HIGH":     "orange",
+                "🟡 MEDIUM":   "cadetblue",
+                "🟢 LOW":      "green",
+            }
 
-        # Legend — white background, dark text, always readable
-        legend_html = """
-        <div style='position:fixed; bottom:40px; left:40px; z-index:1000;
-             background:#ffffff; padding:12px 16px; border-radius:8px;
-             box-shadow:0 2px 8px rgba(0,0,0,0.3);
-             font-family:sans-serif; font-size:13px; color:#111111;'>
-            <b>Enforcement Priority</b><br><br>
-            <span style='color:red; font-size:16px'>●</span>&nbsp; CRITICAL (≥ 7.0)<br>
-            <span style='color:orange; font-size:16px'>●</span>&nbsp; HIGH (4 – 7)<br>
-            <span style='color:cadetblue; font-size:16px'>●</span>&nbsp; MEDIUM (2 – 4)<br>
-            <span style='color:green; font-size:16px'>●</span>&nbsp; LOW (&lt; 2)<br>
-            <br><i style='font-size:11px'>Circle size ∝ risk score<br>Click marker for details</i>
-        </div>
-        """
-        m.get_root().html.add_child(folium.Element(legend_html))
+            for _, row in cluster_map.iterrows():
+                tier   = str(row.get("risk_tier", "🟢 LOW")).strip()
+                color  = FOLIUM_COLORS.get(tier, "blue")
 
-        st_folium(m, use_container_width=True, height=550, returned_objects=[])
+                # FIXED: radius 5–18 pixels (was 60–160 — way too large)
+                radius = int(5 + (float(row["risk_score"]) / 10.0) * 13)
+
+                popup_html = f"""
+                <div style='font-family:sans-serif; width:240px; font-size:13px;
+                            color:#111111; background:#ffffff; padding:6px'>
+                    <b style='font-size:14px'>Rank #{int(row['rank'])} — {tier}</b>
+                    <hr style='margin:4px 0; border-color:#cccccc'>
+                    <b>Junction:</b> {row['display_name']}<br>
+                    <b>Risk Score:</b> {float(row['risk_score']):.1f} / 10<br>
+                    <b>Violations:</b> {int(row['violation_count']):,}<br>
+                    <b>Peak Hour:</b> {int(row['peak_hour'])}:00<br>
+                    <b>Peak Day:</b> {row['peak_day_name']}<br>
+                    <b>Top Vehicle:</b> {row['top_vehicle']}<br>
+                    <hr style='margin:4px 0; border-color:#cccccc'>
+                    <b>Action:</b><br>
+                    <span style='color:#333333'>{row['recommended_action']}</span>
+                </div>
+                """
+
+                folium.CircleMarker(
+                    location=[row["center_lat"], row["center_lon"]],
+                    radius=radius,
+                    color=color,
+                    fill=True,
+                    fill_color=color,
+                    fill_opacity=0.75,
+                    weight=2,
+                    popup=folium.Popup(popup_html, max_width=260),
+                    tooltip=(
+                        f"#{int(row['rank'])} {tier} | "
+                        f"Score: {float(row['risk_score']):.1f} | "
+                        f"{row['display_name']}"
+                    ),
+                ).add_to(m)
+
+            folium.LayerControl().add_to(m)
+            
+       
+            # Legend — white background, dark text, always readable
+            legend_html = """
+            <div style='position:fixed; bottom:40px; left:40px; z-index:1000;
+                background:#ffffff; padding:12px 16px; border-radius:8px;
+                box-shadow:0 2px 8px rgba(0,0,0,0.3);
+                font-family:sans-serif; font-size:13px; color:#111111;'>
+                <b>Enforcement Priority</b><br><br>
+                <span style='color:red; font-size:16px'>●</span>&nbsp; CRITICAL (≥ 7.0)<br>
+                <span style='color:orange; font-size:16px'>●</span>&nbsp; HIGH (4 – 7)<br>
+                <span style='color:cadetblue; font-size:16px'>●</span>&nbsp; MEDIUM (2 – 4)<br>
+                <span style='color:green; font-size:16px'>●</span>&nbsp; LOW (&lt; 2)<br>
+                <br><i style='font-size:11px'>Circle size ∝ risk score<br>Click marker for details</i>
+            </div>
+            """
+            m.get_root().html.add_child(folium.Element(legend_html))
+
+            st_folium(m, use_container_width=True, height=550, returned_objects=[])
 
         # ── Legend row ────────────────────────────────────────
         st.markdown("---")
