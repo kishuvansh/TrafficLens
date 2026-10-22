@@ -93,6 +93,7 @@ print(f"  Parsed {len(VIOLATION_COLS)} unique violation types")
 print("\nSTEP 2: Temporal feature engineering...")
 
 df["created_datetime"] = pd.to_datetime(df["created_datetime"], format="mixed", utc=True)
+df["created_datetime_ist"] = df["created_datetime"].dt.tz_convert("Asia/Kolkata")
 df["hour"]        = df["created_datetime"].dt.hour
 df["day_of_week"] = df["created_datetime"].dt.dayofweek  # 0=Mon
 df["is_weekend"]  = (df["day_of_week"] >= 5).astype(int)

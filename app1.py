@@ -63,7 +63,7 @@ st.markdown("""
 """)
 st.info("""
 **What is this?**  
-TrafficLens analyses 5 months of real Bengaluru Traffic Police violation data (298,450 records) 
+TrafficLens analyses 5 months of real Bengaluru Traffic Police violation data 
 to identify illegal parking hotspots, detect anomalous spikes, and predict where violations 
 will peak — helping enforcement move from reactive patrol to predictive deployment.
 """)
